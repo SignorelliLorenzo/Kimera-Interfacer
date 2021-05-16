@@ -1,3 +1,6 @@
+import os
+os.system("export LD_LIBRARY_PATH=/usr/local/lib")
+
 import argparse
 import copy
 
@@ -226,17 +229,24 @@ class LabelGenerator:
       mode = override_mode
 
     if mode == "gt":
-      label = load_label_scannet( f"{self._gt_dir}/{frame}.png", self._mapping_scannet)
+      self._output_buffer_label = load_label_scannet( f"{self._gt_dir}/{frame}.png", self._mapping_scannet)
+      for i in range(0, 41):
+        self._output_buffer_img[self._output_buffer_label == i, :3] = self._rgb[i]
+      self._output_buffer_probs.fill(0)
+      tup = ()
     elif mode == "network_prediction":
-      label = load_label_detectron( f"{self._detectron_dir}/{frame}.png", self._mapping_scannet)
+      self._output_buffer_label = load_label_detectron( f"{self._detectron_dir}/{frame}.png", self._mapping_scannet)
+      for i in range(0, 41):
+        self._output_buffer_img[self._output_buffer_label == i, :3] = self._rgb[i]
+      self._output_buffer_probs.fill(0)
     elif mode == "map_onehot" or mode == "map_probs":
-      label = self.get_label_raytracing( H_cam, mode, visu)
+      self.set_label_raytracing( H_cam, mode, visu)
     else:
       raise ValueError("Invalid mode")
 
-    return label
+    return self._output_buffer_label, self._output_buffer_img, self._output_buffer_probs
 
-  def get_label_raytracing(self, H_cam, mode , visu):
+  def set_label_raytracing(self, H_cam, mode , visu):
     # Move Camera Rays
     ray_origins = transform(self._start.reshape((-1, 3)), H_cam)
     H_turn = np.eye(4)
@@ -285,7 +295,10 @@ class LabelGenerator:
       plt.show()
       self.visu_current_buffer(locations, ray_origins)
 
-    return self._output_buffer_label, self._output_buffer_img, self._output_buffer_probs
+    self._output_buffer_probs = self._output_buffer_probs - \
+                                (np.min( self._output_buffer_probs, axis=2)[...,None]).repeat(self._output_buffer_probs.shape[2],2)
+    self._output_buffer_probs = self._output_buffer_probs/ \
+                                (np.sum( self._output_buffer_probs, axis=2)[...,None]).repeat(self._output_buffer_probs.shape[2],2)
 
   def visu_current_buffer(self, locations=None, ray_origins=None, sub=1000, sub2=8):
     vis = o3d.visualization.Visualizer()

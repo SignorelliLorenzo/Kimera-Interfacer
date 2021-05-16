@@ -123,18 +123,15 @@ def dl_mock():
     ids = mapping[1:, 5]
     rgb = mapping[1:, 1:4]
 
-    per = 0.5 # percentage of used depth info
+    per = 0 # percentage of used depth info
     while not rospy.is_shutdown():
         n += 10
-        if n > 70: #5570: #5570:
+        if n > 5570: #5570: #5570:
             # stops the kimera interfacer to gernerate mesh
             sleep(20)
             n = 0
             # break
-
         time = rospy.Time.now()
-        print("Published Frame")
-
         img = imageio.imread(f"{base_path}/color/{n}.jpg")
         depth = imageio.imread(f"{base_path}/depth/{n}.png")
         sem = load_label( f"{base_path}/{seg_folder }/{n}.png", mapping_scannet)
