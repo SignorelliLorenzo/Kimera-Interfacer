@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
   CHECK(nh_private.getParam("base_link_frame", base_link_frame_id_));
   CHECK(nh_private.getParam("world_frame", world_frame_id_));
 
-  std::unique_ptr<voxblox::TsdfServer> tsdf_server;
+  std::unique_ptr<kimera::SemanticTsdfServer> tsdf_server;
   tsdf_server = kimera::make_unique<kimera::SemanticTsdfServer>(nh, nh_private);
 
   kimera::PointCloudFromDepth pcl_from_depth;
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
   pcl_pub = nh.advertise<kimera::PointCloud>("pcl", 10, true);
   kimera::PointCloud::Ptr pcl;
   cv_bridge::CvImagePtr cv_ptr;
-  ros::Rate r(30);
+  ros::Rate r(100);
 
   // get transformation
   tf2_ros::Buffer tfBuffer;
@@ -119,19 +119,20 @@ int main(int argc, char** argv) {
   int j = 0;
   int last_frame_integrated = 0;
   while (ros::ok()) {
-
-//    bool res = ( depth_ptr->header.seq == seg_ptr->header.seq and
-//                depth_ptr->header.seq != last_frame_integrated);
-
     bool res = depth_ptr->header.seq != last_frame_integrated;
 
-    if (res) {
+    if (not res) {
+      j++;
+      if (j > 200) {
+        break;
+      }
+    }
+    else {
+      j = 0;
       //std::cout << "Received new data and alread process " << j << "Frames"<< std::endl;
       last_frame_integrated = depth_ptr->header.seq;
       pcl = pcl_from_depth.imageCb(depth_ptr, seg_ptr, camera_ptr);
-      //std::cout << "PCL generated height:" << pcl->height << " Width:" << pcl->width << pcl->fields[0].count << " DATA 0" << pcl->data[0] << std::endl;
-
-
+      //std::cout << "PCL generated height:" << pcl->height << " Width:" << pcl->width << pcl->fields[0].count << " DATA 0" << pcl->data[0] << std::endl
       // Feed semantic pointcloud to KS.
       try{
         voxblox::Transformation T_G_B;
@@ -150,12 +151,6 @@ int main(int argc, char** argv) {
 
         // pcl->header.frame_id = world_frame_id_;
         pcl_pub.publish(pcl);
-
-        j++;
-        if (j > 500){
-          break;
-        }
-
       }
       catch (tf2::TransformException &ex) {
         LOG(ERROR) << "Some error when getting TF and insert new PCL message into tsdf_server";
@@ -165,6 +160,16 @@ int main(int argc, char** argv) {
     ros::spinOnce();
     r.sleep();
   }
+  std::cout << "START GENERATING THE MESH" << std::endl;
+  std::cout << "START GENERATING THE MESH" << std::endl;
+  std::cout << "START GENERATING THE MESH" << std::endl;
+  std::cout << "START GENERATING THE MESH" << std::endl;
+  tsdf_server->serializeVoxelLayer();
+
+  std::cout << "FINISHED GENERATING THE MESH" << std::endl;
+  std::cout << "FINISHED GENERATING THE MESH" << std::endl;
+  std::cout << "FINISHED GENERATING THE MESH" << std::endl;
+
 
   // Generates mesh and saves the ply file if mesh_filename ROS param is given
   tsdf_server->generateMesh();

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="ISO-8859-15"?>
+<launch>
+  <arg name="voxel_size"       default="0.03"/>
+  <arg name="max_ray_length_m" default="5"/>
+
+  <!--  FRAMES  -->
+  <arg name="sensor_frame"       default="base_link_gt"/>
+  <arg name="base_link_gt_frame" default="base_link_gt"/>
+  <arg name="base_link_frame"    default="base_link_gt"/>
+
+  <!--  TOPICS  -->
+  <arg name="depth_topic"       default="depth_img"/>
+  <arg name="image_topic"       default="rgb_img"/>
+  <arg name="seg_topic"       default="semantic_img"/>
+  <arg name="sync_topic"       default="sync_semantic"/>
+
+  <arg name="base_path"                 value="/home/jonfrey/Datasets/scannet_scene_0000/"/>
+
+  <arg name="semantic_label_2_color_csv_filename" default="nyu40_segmentation_mapping.csv"/>
+  <arg name="use_dynamic_masking" default="true"/>
+  <arg name="semantic_pointcloud"         default="/semantic_pointcloud"/>
+
+  <arg name="use_freespace_pointcloud"    default="false" />
+  <arg name="freespace_pointcloud"        default="/dev/null"/>
+
+  <node name="dl_mock" pkg="kimera_interfacer"
+        type="dl_mock.py" output="screen" required="true" >
+      <param name="seg_folder"                value="label_detectron2"/>
+      <param name="base_link_gt_frame"        value="$(arg base_link_gt_frame)"/>
+      <param name="base_link_frame"           value="$(arg base_link_frame)"/>
+      <param name="world_frame"               value="world"/>
+
+      <param name="depth_topic" value="$(arg depth_topic)"/>
+      <param name="image_topic" value="$(arg image_topic)"/>
+      <param name="seg_topic"   value="$(arg seg_topic)"/>
+      <param name="sync_topic" value="$(arg sync_topic)"/>
+  </node>
+</launch>
