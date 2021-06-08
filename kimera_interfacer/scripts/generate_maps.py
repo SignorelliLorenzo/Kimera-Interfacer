@@ -8,7 +8,7 @@ label_identifier = exp['label_generation']['identifier']
 scenes = exp['label_generation']['scenes']
 print(scenes)
 
-for s in scenes:
+for j,s in enumerate(scenes):
   cmd = f"roslaunch kimera_interfacer predict_generic_scene.launch label_identifier:={label_identifier} scene:={s}"
   print(cmd)
   os.system(cmd)

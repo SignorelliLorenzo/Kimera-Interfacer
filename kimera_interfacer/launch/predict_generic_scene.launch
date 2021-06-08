@@ -7,14 +7,14 @@
   <arg name="scannet_scene_base"     default="/home/jonfrey/Datasets/scannet/scans"/>
   <arg name="label_scene_base"     default="/home/jonfrey/Datasets/labels_generated"/>
 
-  <arg name="fps"                    default="1"/>
+  <arg name="fps"                    default="5"/>
   <arg name="frame_limit"            default="-1"/>
   <arg name="ratio_reprojected"      default="1.0"/>
   <arg name="mapping_scannet_path"   default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv"/>
   <arg name="scannet_labels"         default="False" />
   <arg name="output_dir"             default="/home/jonfrey/Datasets/output_kimera_semantics"/>
 
-  <arg name="voxel_size"             default="0.03"/>
+  <arg name="voxel_size"             default="0.01"/>
   <arg name="max_ray_length_m"       default="5"/>
 
   <!--  FRAMES  -->
