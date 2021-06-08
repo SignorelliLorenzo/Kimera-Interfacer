@@ -29,3 +29,35 @@ To run this you need to install my Kimera Semantic Fork.
 A features in the original version do not exist:
 NYU40 labels support as a configuration parameter.
 Serialization fo the TSDF with label class probabilities
+
+
+
+
+## Current results:
+
+Reprojecting back the labels to the original camera frames leads to less accurate labels!
+
+What we in best case want:  
+Method:
+  - **Input:**  Camera poses, depth, images, labels (by current CL-Model(FastSCNN))
+  - **Output:** Label for the image with increased acc.
+  - **Optional:** Other supervision signal by different networks.
+
+What problems we can solve with this:
+  - Spatial and temporal consistency of the observations!
+
+Limitations:
+- Discovering new classes, domain adaptation (one dataset labels bicycles as "vehicles" in the other as "properties")
+
+
+What to do next:
+1. Use multiple networks to probabilistically accumulated teacher supervision signal (YOLO, Detectron, MaskCNN, ScanNet).
+2. Make the reprojection the the labels better. Use depth and color information to apply CRF or use superpixels.
+3. Refine the voxalized map.   
+   Simply taking the argmax of each voxel probability is not the best we can do.  
+   Use learning network to segment the voxalized map! Getting to the notion of voxels belonging to a certain object.  
+4. Keeping better track of changes in the voxel label. Using the volumetric structure which we are able to generate.
+This is currently not really used given that we only keep track of the posterior for each voxel.
+In 3D the voxels or rendered mesh it seems to be easier to use geometric information  to cluster objects. 
+
+

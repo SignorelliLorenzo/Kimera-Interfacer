@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
   pcl_pub = nh.advertise<kimera::PointCloud>("pcl", 10, true);
   kimera::PointCloud::Ptr pcl;
   cv_bridge::CvImagePtr cv_ptr;
-  ros::Rate r(100);
+  ros::Rate r(50);
 
   // get transformation
   tf2_ros::Buffer tfBuffer;
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
 
     if (not res) {
       j++;
-      if (j > 200) {
+      if (j > 500) {
         break;
       }
     }
@@ -160,16 +160,12 @@ int main(int argc, char** argv) {
     ros::spinOnce();
     r.sleep();
   }
-  std::cout << "START GENERATING THE MESH" << std::endl;
-  std::cout << "START GENERATING THE MESH" << std::endl;
-  std::cout << "START GENERATING THE MESH" << std::endl;
-  std::cout << "START GENERATING THE MESH" << std::endl;
-  tsdf_server->serializeVoxelLayer();
 
+  std::string semantic_filename;
+  CHECK(nh_private.getParam("semantic_filename", semantic_filename));
+  std::cout << "START GENERATING THE MESH" << std::endl;
+  tsdf_server->serializeVoxelLayer( semantic_filename );
   std::cout << "FINISHED GENERATING THE MESH" << std::endl;
-  std::cout << "FINISHED GENERATING THE MESH" << std::endl;
-  std::cout << "FINISHED GENERATING THE MESH" << std::endl;
-
 
   // Generates mesh and saves the ply file if mesh_filename ROS param is given
   tsdf_server->generateMesh();

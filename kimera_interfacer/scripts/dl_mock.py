@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+
 import rospy
 from sensor_msgs.msg import Image
 from kimera_interfacer.msg import SyncSemantic
 import cv_bridge
 import cv2 as cv
-
+import os
 
 import numpy as np
 from sensor_msgs.msg import CameraInfo
@@ -14,25 +15,8 @@ import tf2_ros
 import geometry_msgs.msg
 import rospkg
 from time import sleep
-import pandas
-import torch
 
-def load_label_scannet( p, mapping_scannet):
-    label_gt = imageio.imread( p )
-    label_gt = torch.from_numpy(label_gt.astype(np.int32)).type(
-        torch.float32)[:, :]  # H W
-    sa = label_gt.shape
-    label_gt = label_gt.flatten()
-    print(p)
-
-    label_gt = mapping_scannet[label_gt.type(torch.int64)]
-    label_gt = label_gt.reshape(sa) # 1 == chairs 40 other prop  0 invalid
-
-    return label_gt.numpy()
-
-def load_label_detectron( p, ignore):
-    label_gt = imageio.imread( p )
-    return label_gt
+from label_loader import LabelLoaderAuto
 
 
 def txt_to_camera_info(cam_p, img_p):
@@ -70,38 +54,28 @@ def broadcast_camera_pose(H, frames, time):
     t.transform.rotation.w = q[3]
     br.sendTransform(t)
 
-def get_mapping_scannet(p):
-    df = pandas.read_csv(p, sep='\t')
-    mapping_source = np.array( df['id'] )
-    mapping_target = np.array( df['nyu40id'] )
-    mapping_scannet = torch.zeros( ( int(mapping_source.max()+1) ),dtype=torch.int64)
-    for so,ta in zip(mapping_source, mapping_target):
-        mapping_scannet[so] = ta
-    return mapping_scannet
-
 
 def dl_mock():
-    mapping_scannet = get_mapping_scannet("/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv")
     rospack = rospkg.RosPack()
     kimera_interfacer_path = rospack.get_path('kimera_interfacer')
 
+    label_loader =LabelLoaderAuto(root_scannet= "/home/jonfrey/Datasets/scannet", confidence=0)
+    
     depth_topic = rospy.get_param("~/dl_mock/depth_topic")
     image_topic = rospy.get_param("~/dl_mock/image_topic")
     seg_topic = rospy.get_param("~/dl_mock/seg_topic")
 
     sync_topic = rospy.get_param("~/dl_mock/sync_topic")
-    seg_folder = rospy.get_param("~/dl_mock/seg_folder")
+        
+    probabilistic = rospy.get_param("~/dl_mock/probabilistic")
+    
 
-    if seg_folder == "label-filt":
-        load_label = load_label_scannet
-    else:
-        load_label = load_label_detectron
-
-    base_link_gt_frame = rospy.get_param("~/dl_mock/base_link_gt_frame")
     base_link_frame = rospy.get_param("~/dl_mock/base_link_frame")
     world_frame = rospy.get_param("~/dl_mock/world_frame")
 
-    base_path = "/home/jonfrey/Datasets/scannet_scene_0000/" # rospy.get_param("~/dl_mock/base_path")
+    scannet_scene_dir = rospy.get_param("~/dl_mock/scannet_scene_dir")
+    label_scene_dir = rospy.get_param("~/dl_mock/label_scene_dir")
+
 
     depth_pub = rospy.Publisher(depth_topic, Image, queue_size=1)
     image_pub = rospy.Publisher(image_topic, Image, queue_size=1)
@@ -114,28 +88,45 @@ def dl_mock():
 
     rospy.init_node('dl_mock', anonymous=True)
 
-    rate = rospy.Rate(3)  # 1hz
-    image_camera_info_msg = txt_to_camera_info(f"{base_path}/intrinsic/intrinsic_color.txt", f"{base_path}color/0.jpg")
-    depth_camera_info_msg = txt_to_camera_info(f"{base_path}/intrinsic/intrinsic_depth.txt", f"{base_path}/color/0.jpg")
+    rate = rospy.Rate(rospy.get_param("~/dl_mock/fps"))  # 1hz
+    image_camera_info_msg = txt_to_camera_info(f"{scannet_scene_dir}/intrinsic/intrinsic_color.txt", f"{scannet_scene_dir}color/0.jpg")
+    depth_camera_info_msg = txt_to_camera_info(f"{scannet_scene_dir}/intrinsic/intrinsic_depth.txt", f"{scannet_scene_dir}/color/0.jpg")
     n = 0
     seq = 0
     mapping = np.genfromtxt(f'{kimera_interfacer_path}/cfg/nyu40_segmentation_mapping.csv' , delimiter=',')
-    ids = mapping[1:, 5]
     rgb = mapping[1:, 1:4]
 
     per = 0 # percentage of used depth info
+
+    frame_limit = rospy.get_param("~/dl_mock/frame_limit")
+    sub = 10
+
+    if frame_limit == -1:
+        frame_limit = float('inf')
+    else:
+        frame_limit = int(frame_limit * sub)
+
     while not rospy.is_shutdown():
-        n += 10
-        if n > 5570: #5570: #5570:
-            # stops the kimera interfacer to gernerate mesh
+        n += sub
+        img_p = os.path.join( scannet_scene_dir, "color", str(n)+".jpg")
+        depth_p = os.path.join( scannet_scene_dir, "depth", str(n)+".png")
+        label_p = os.path.join( label_scene_dir, str(n)+".png")
+        if ( n > frame_limit or
+            not os.path.isfile( img_p ) or
+            not os.path.isfile( label_p )):
+            if n < frame_limit:
+                print("stopped at: ", img_p)
+                print("stopped at: ", label_p)
             sleep(20)
             n = 0
-            # break
-        time = rospy.Time.now()
-        img = imageio.imread(f"{base_path}/color/{n}.jpg")
-        depth = imageio.imread(f"{base_path}/depth/{n}.png")
-        sem = load_label( f"{base_path}/{seg_folder }/{n}.png", mapping_scannet)
+            break
 
+        time = rospy.Time.now()
+        img = imageio.imread( img_p )
+        depth = imageio.imread( depth_p )
+        sem, _ = label_loader.get( label_p )
+
+        print(sem.shape)
         depth[ np.random.rand( *depth.shape ) < per ] = 1
 
         sem_new = np.zeros( (sem.shape[0], sem.shape[1], 3) )
@@ -144,7 +135,7 @@ def dl_mock():
         sem_new = np.uint8( sem_new )
 
         # publish camera pose
-        H_cam = np.loadtxt(f"{base_path}pose/{n}.txt")
+        H_cam = np.loadtxt(f"{scannet_scene_dir}pose/{n}.txt")
         broadcast_camera_pose( H_cam, (world_frame, base_link_frame), time)
 
         H, W = depth.shape[0], depth.shape[1] # 640, 1280
@@ -164,26 +155,20 @@ def dl_mock():
              interpolation=cv.INTER_NEAREST,
              borderMode=cv.BORDER_CONSTANT,
              borderValue=0)
+        
+        print("SEM NEW ", sem_new.shape, sem_new.max(), sem_new.min(), probabilistic)
         sem_new = cv.remap( sem_new,
                         map1,
                         map2,
                         interpolation=cv.INTER_NEAREST,
                         borderMode=cv.BORDER_CONSTANT,
                         borderValue=0)
-        # from PIL import Image as ImagePIL
-        # img2 = ImagePIL.fromarray(np.uint8(np.concatenate( [img,sem_new] )))
-        # img2.show()
 
-        mask = sem_new.sum(axis=2) == 0
+        mask = sem_new.sum(axis=2) == 1- rospy.get_param("~/dl_mock/ratio_reprojected")
         depth[mask] = 0
-        #
-        # depth = cv.resize(depth, dsize=(W, H), interpolation=cv.INTER_NEAREST)
-        # img = cv.resize(img, dsize=(W, H), interpolation=cv.INTER_CUBIC)
-        # sem_new = cv.resize(sem_new, dsize=(W, H), interpolation=cv.INTER_NEAREST)
-
         img = bridge.cv2_to_imgmsg(img, encoding="rgb8")
         depth = bridge.cv2_to_imgmsg(depth, encoding="16UC1")
-        sem_new = bridge.cv2_to_imgmsg(sem_new, encoding="rgb8" ) #"rgb8")  # "mono16")
+        sem_new = bridge.cv2_to_imgmsg(sem_new, encoding="rgb8" )
 
         img.header.frame_id = "base_link_gt"
         depth.header.frame_id = "base_link_gt"
@@ -220,7 +205,3 @@ if __name__ == '__main__':
         dl_mock()
     except rospy.ROSInterruptException:
         pass
-
-# left_cam  -> depth
-# left_cam  -> image_raw
-# left_cam  -> /tesse/segmentation/image_raw

@@ -1,3 +1,14 @@
+"""
+TODO: Jonas Frey
+
+This needs a complete refactoring.
+Integrate LabelLoaderAuto at first.
+Split the visualization into a seperat module with o3d 
+Have a utils file for everything related to the voxels map.
+Implement a seperat map loader
+Implement a rendered where the map can be passed
+"""
+
 import os
 os.system("export LD_LIBRARY_PATH=/usr/local/lib")
 
@@ -12,10 +23,27 @@ import rospkg
 import torch
 import trimesh
 from trimesh.ray.ray_pyembree import RayMeshIntersector
-
-import semantic_map_pb2
-from load_protobuf import parse
 import matplotlib.pyplot as plt
+
+
+from convert_label import png_to_label
+
+# PROTOBUF semantic map
+import semantic_map_pb2
+from google.protobuf.internal.decoder import _DecodeVarint32
+
+
+def parse( file_handle, msg):
+  buf = file_handle.read()
+  n = 0
+  while n < len(buf):
+    msg_len, new_pos = _DecodeVarint32(buf, n)
+    n = new_pos
+    msg_buf = buf[n:n+msg_len]
+    n += msg_len
+    read_metric = msg
+    read_metric.ParseFromString(msg_buf)
+  return msg
 
 def get_semantic_map(p):
   msg = semantic_map_pb2.SemanticMapProto()
@@ -76,7 +104,6 @@ def get_x_y_z(index, origin, voxels_per_side, voxel_size):
 
 eps = 10 ** (-4)
 
-
 def get_grid_index_from_point(point, grid_size_inv):
   return np.floor(point * grid_size_inv + eps).astype(np.uint32)
 
@@ -131,14 +158,12 @@ def parse_protobug_msg_into_accessiable_np_array(map):
   # return orging point of new voxel_grid
   return voxels, mi
 
-
 def draw_cube(vis, translation, size, color):
   cube = o3d.geometry.TriangleMesh.create_box()
   cube.scale(size, center=cube.get_center())
   cube.translate(translation, relative=False)
   cube.paint_uniform_color(color / 255)
   vis.add_geometry(cube)
-
 
 def get_voxels_grid_idx_from_point(point, mi, voxel_size):
   idx = np.floor((point - mi) / (voxel_size))
@@ -154,21 +179,34 @@ def load_label_scannet( p, mapping_scannet):
   label_gt = label_gt.reshape(sa) # 1 == chairs 40 other prop  0 invalid
   return label_gt.numpy()
 
-def load_label_detectron( p, ignore):
+def load_label_network( p, ignore):
   label_gt = imageio.imread( p )
   return label_gt
 
+def load_label_network_new_format( p, ignore):
+  label_gt = png_to_label(p)
+  return np.argmax( label_gt, axis= 2) + 1 
+  # return label_gt
+
+# TODO Jonas Frey create data_connector to split rendering from loading
 class LabelGenerator:
   def __init__(self, arg):
     self.arg = arg
-    # SETTING PATHS
-    root = arg.root
-    base_path = arg.scene_path
-    mesh_name = arg.mesh_name
-    self._gt_dir = f"{base_path}/label-filt/"
-    self._detectron_dir = f"{base_path}/label_detectron2/"
-    self._mapping_scannet = get_mapping_scannet( arg.mapping_scannet)
+
+    # Pass the args config
+    scannet_scene_dir = arg.scannet_scene_dir
+    label_scene_dir = arg.label_scene_dir
+    mapping_scannet_path = arg.mapping_scannet_path
+    self._mesh_path = arg.mesh_path
+    map_serialized_path = arg.map_serialized_path
+
     self._mode = arg.mode
+    self._confidence = arg.confidence
+
+    self._gt_dir = f"{scannet_scene_dir}/label-filt/"
+    self._label_scene_dir = label_scene_dir
+    self._mapping_scannet = get_mapping_scannet( mapping_scannet_path)
+
     rospack = rospkg.RosPack()
     kimera_interfacer_path = rospack.get_path('kimera_interfacer')
     # MAPPING
@@ -177,21 +215,19 @@ class LabelGenerator:
     self._rgb = mapping[1:, 1:4]
     self._rgb[0, :] = 255
 
-    p = f"{kimera_interfacer_path}/mesh_results/{mesh_name}.ply"
-    mesh = trimesh.load(p)
-    self._mesh_path = p
+    mesh = trimesh.load(self._mesh_path)
 
     # GT LABEL TEST
-    label_gt = imageio.imread(self._gt_dir + "0" + '.png')
+    label_gt = imageio.imread( os.path.join( scannet_scene_dir , "label-filt/0" + '.png' ) )
     H, W = label_gt.shape
 
     size = (H, W)
     self._size = size
-    data = np.loadtxt(f"{base_path}/intrinsic/intrinsic_depth.txt")
+    data = np.loadtxt(f"{ scannet_scene_dir }/intrinsic/intrinsic_depth.txt")
     k_render = np.array([[data[0, 0], 0, data[0, 2]],
                          [0, data[1, 1], data[1, 2]],
                          [0, 0, 1]])
-    data = np.loadtxt(f"{base_path}/intrinsic/intrinsic_color.txt")
+    data = np.loadtxt(f"{scannet_scene_dir}/intrinsic/intrinsic_color.txt")
     k_image = np.array([[data[0, 0], 0, data[0, 2]],
                         [0, data[1, 1], data[1, 2]],
                         [0, 0, 1]])
@@ -209,7 +245,7 @@ class LabelGenerator:
       self.faces_to_labels[ inverse == k] = np.argmin( np.linalg.norm(self._rgb-c[:3], axis=1,ord=2)  , axis = 0 )
 
     # Parse serialized voxel_data to usefull numpy structure
-    map = get_semantic_map(arg.map_serialized)
+    map = get_semantic_map(map_serialized_path)
     self._voxels, self._mi = parse_protobug_msg_into_accessiable_np_array(map)
 
     self._output_buffer_probs = np.zeros((H, W, self._voxels.shape[3]))
@@ -235,16 +271,19 @@ class LabelGenerator:
       self._output_buffer_probs.fill(0)
       tup = ()
     elif mode == "network_prediction":
-      self._output_buffer_label = load_label_detectron( f"{self._detectron_dir}/{frame}.png", self._mapping_scannet)
+      self._output_buffer_label = load_label_network(
+        os.path.join( self._label_scene_dir, f"{frame}.png"),
+        self._mapping_scannet)
+
       for i in range(0, 41):
         self._output_buffer_img[self._output_buffer_label == i, :3] = self._rgb[i]
       self._output_buffer_probs.fill(0)
-    elif mode == "map_onehot" or mode == "map_probs":
+    elif mode == "map_onehot" or mode == "map_probs" or mode.find("map_probs_with_confidence") != -1:
       self.set_label_raytracing( H_cam, mode, visu)
     else:
       raise ValueError("Invalid mode")
 
-    return self._output_buffer_label, self._output_buffer_img, self._output_buffer_probs
+    return self._output_buffer_label, np.uint8( self._output_buffer_img ), self._output_buffer_probs
 
   def set_label_raytracing(self, H_cam, mode , visu):
     # Move Camera Rays
@@ -285,6 +324,17 @@ class LabelGenerator:
       _v, _u = self._v[index_ray[j]], self._u[index_ray[j]]
       self._output_buffer_probs[self._v[index_ray[j]], self._u[index_ray[j]], :] = self._voxels[tuple(idx_tmp[j])]
 
+    self._output_buffer_probs = self._output_buffer_probs - \
+                                (np.min( self._output_buffer_probs, axis=2)[...,None]).repeat(self._output_buffer_probs.shape[2],2)
+    self._output_buffer_probs = self._output_buffer_probs/ \
+                                (np.sum( self._output_buffer_probs, axis=2)[...,None]).repeat(self._output_buffer_probs.shape[2],2)
+
+    if mode.find("map_probs_with_confidence") != -1:
+      m = self._output_buffer_probs.max(axis=2) < self._confidence
+      self._output_buffer_label[ m ] = 0
+      self._output_buffer_probs[ m ] = 0
+      self._output_buffer_probs[ m, 0 ] = 1
+
     self._output_buffer_label = np.argmax(self._output_buffer_probs, axis=2)
     self._output_buffer_img.fill(0)
     for i in range(0, 41):
@@ -295,10 +345,7 @@ class LabelGenerator:
       plt.show()
       self.visu_current_buffer(locations, ray_origins)
 
-    self._output_buffer_probs = self._output_buffer_probs - \
-                                (np.min( self._output_buffer_probs, axis=2)[...,None]).repeat(self._output_buffer_probs.shape[2],2)
-    self._output_buffer_probs = self._output_buffer_probs/ \
-                                (np.sum( self._output_buffer_probs, axis=2)[...,None]).repeat(self._output_buffer_probs.shape[2],2)
+
 
   def visu_current_buffer(self, locations=None, ray_origins=None, sub=1000, sub2=8):
     vis = o3d.visualization.Visualizer()
@@ -381,22 +428,33 @@ class LabelGenerator:
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument("--root", type=str, default="/home/jonfrey/Datasets/scannet", help="")
-  parser.add_argument("--scene_path", type=str, default="/home/jonfrey/Datasets/scannet_scene_0000", help="")
+
+  # CONFIGURATION
   parser.add_argument("--mode", type=str, default="map_probs",
-                      choices=["gt", "network_prediction", "map_onehot", "map_probs"], help="")
-  parser.add_argument("--map_serialized", type=str,
-                      default="/home/jonfrey/catkin_ws/src/Kimera-Interfacer/kimera_interfacer/mesh_results/serialized.data",
-                      help="")
-  parser.add_argument("--mapping_scannet", type=str,
-                      default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv",
-                      help="")
+                      choices=["gt", "network_prediction", "map_onehot", "map_probs", "map_probs_with_confidence"], help="")
+  parser.add_argument("--confidence", type=float, default=0.5,
+                      help="Minimum confidence necessary only use in map_probs_with_confidence")
+
+  # EXTERNAL DATA PATHS
+  parser.add_argument("--scannet_scene_dir", type=str,
+                      default="/home/jonfrey/Datasets/scannet/scans/scene0000_00", help="")
+  parser.add_argument("--label_scene_dir", type=str,
+                      default="/home/jonfrey/Datasets/labels_generated/pretrain_scene_10-60/scene0000_00/pretrain_scene_10-60", help="")
+  parser.add_argument("--mapping_scannet_path", type=str,
+                      default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv", help="")
+  parser.add_argument("--mesh_path", type=str,
+                      default="/home/jonfrey/catkin_ws/src/Kimera-Interfacer/kimera_interfacer/mesh_results/predict_mesh.ply", help="")
+  parser.add_argument("--map_serialized_path", type=str,
+                      default="/home/jonfrey/catkin_ws/src/Kimera-Interfacer/kimera_interfacer/mesh_results/serialized.data", help="")
 
   parser.add_argument("--mesh_name", type=str, default="predict_mesh", help="")
+  
+  new_format = True
+  if new_format:
+    load_label_network = load_label_network_new_format
+  
   args = parser.parse_args()
   label_generator = LabelGenerator(args)
   i = 10
-  H_cam = np.loadtxt(f"{args.scene_path}/pose/{i}.txt")
+  H_cam = np.loadtxt(f"{args.scannet_scene_dir}/pose/{i}.txt")
   label,img, probs = label_generator.get_label(H_cam, i)
-  import time
-  time.sleep(20)

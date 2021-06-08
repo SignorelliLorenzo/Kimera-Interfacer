@@ -1,0 +1,9 @@
+*.swp
+*.idea
+**/mesh_results/*
+**/tsdf_results/*
+*.ccls*
+*.vscode/
+*.ipynb_checkpoints/
+kimera_interfacer/cmake-build-debug/*
+*.pyc

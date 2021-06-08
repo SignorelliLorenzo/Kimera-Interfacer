@@ -1,7 +1,21 @@
 <?xml version="1.0" encoding="ISO-8859-15"?>
 <launch>
-  <arg name="voxel_size"       default="0.03"/>
-  <arg name="max_ray_length_m" default="5"/>
+  <arg name="scene"                     default="scene0000_00" />
+  <arg name="label_identifier"      default="pretrained24h_model" />
+  <arg name="scannet_scene_dir"      default="/home/jonfrey/Datasets/scannet/scans/"/>
+
+  <arg name="scannet_scene_base"     default="/home/jonfrey/Datasets/scannet/scans"/>
+  <arg name="label_scene_base"     default="/home/jonfrey/Datasets/labels_generated"/>
+
+  <arg name="fps"                    default="1"/>
+  <arg name="frame_limit"            default="-1"/>
+  <arg name="ratio_reprojected"      default="1.0"/>
+  <arg name="mapping_scannet_path"   default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv"/>
+  <arg name="scannet_labels"         default="False" />
+  <arg name="output_dir"             default="/home/jonfrey/Datasets/output_kimera_semantics"/>
+
+  <arg name="voxel_size"             default="0.03"/>
+  <arg name="max_ray_length_m"       default="5"/>
 
   <!--  FRAMES  -->
   <arg name="sensor_frame"       default="base_link_gt"/>
@@ -11,10 +25,10 @@
   <!--  TOPICS  -->
   <arg name="depth_topic"       default="depth_img"/>
   <arg name="image_topic"       default="rgb_img"/>
-  <arg name="seg_topic"       default="semantic_img"/>
-  <arg name="sync_topic"       default="sync_semantic"/>
+  <arg name="seg_topic"         default="semantic_img"/>
+  <arg name="sync_topic"        default="sync_semantic"/>
 
-  <arg name="base_path"                 value="/home/jonfrey/Datasets/scannet_scene_0000/"/>
+
 
   <arg name="semantic_label_2_color_csv_filename" default="nyu40_segmentation_mapping.csv"/>
   <arg name="use_dynamic_masking" default="true"/>
@@ -25,15 +39,27 @@
 
   <node name="dl_mock" pkg="kimera_interfacer"
         type="dl_mock.py" output="screen" required="true" >
-      <param name="seg_folder"                value="label_detectron2"/>
       <param name="base_link_gt_frame"        value="$(arg base_link_gt_frame)"/>
       <param name="base_link_frame"           value="$(arg base_link_frame)"/>
       <param name="world_frame"               value="world"/>
-
       <param name="depth_topic" value="$(arg depth_topic)"/>
       <param name="image_topic" value="$(arg image_topic)"/>
       <param name="seg_topic"   value="$(arg seg_topic)"/>
       <param name="sync_topic" value="$(arg sync_topic)"/>
+
+      <param name="scannet_scene_dir"       value="$(arg scannet_scene_base)/$(arg scene)/"/>
+
+      <param name="label_scene_dir"         value="$(arg label_scene_base)/$(arg label_identifier)/scans/$(arg scene)/$(arg label_identifier)/"/>
+      <param name="mapping_scannet_path"    value="$(arg mapping_scannet_path)"/>
+      <param name="scannet_labels"          value="$(arg scannet_labels)"/>
+      <param name="fps"                     value="$(arg fps)"/>
+      <param name="frame_limit"             value="$(arg frame_limit)"/>
+      <param name="ratio_reprojected"       value="$(arg ratio_reprojected)"/>
+      
+      <param name="new_format"              value="true"/>
+      
+      
+      <param name="probabilistic"           value="true"/>
 
   </node>
 
@@ -47,8 +73,6 @@
       <param name="base_link_gt_frame"        value="$(arg base_link_gt_frame)"/>
       <param name="base_link_frame"           value="$(arg base_link_frame)"/>
       <param name="world_frame"               value="world"/>
-
-      <param name="base_path"                 value="$(arg base_path)"/>
       Input
       <remap from="pointcloud"                to="$(arg semantic_pointcloud)"/>
 
@@ -85,10 +109,10 @@
       Is this needed?
       <param name="slice_level" value="1.0" />
       <param name="semantic_label_2_color_csv_filepath"
+             value="$(find kimera_interfacer)/cfg/$(arg semantic_label_2_color_csv_filename)"/>
 
-      value="$(find kimera_interfacer)/cfg/$(arg semantic_label_2_color_csv_filename)"/>
-      <param name="mesh_filename"           value="$(find kimera_interfacer)/mesh_results/predict_mesh.ply" />
-      <param name="tsdf_filename"           value="$(find kimera_interfacer)/mesh_results/predict_tsdf_esdf_layers.vxblx" />
-
+      <param name="mesh_filename"           value="$(arg output_dir)/$(arg scene)_$(arg label_identifier)_predict_mesh.ply" />
+      <param name="tsdf_filename"           value="$(arg output_dir)/$(arg scene)_$(arg label_identifier)_predict_tsdf_esdf_layers.vxblx" />
+      <param name="semantic_filename"       value="$(arg output_dir)/$(arg scene)_$(arg label_identifier)_serialized.data" />
   </node>
 </launch>
