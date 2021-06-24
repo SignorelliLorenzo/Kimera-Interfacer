@@ -1,6 +1,16 @@
-from . import VoxelMap
-from . import RayCaster
-from . import Visualizer3D
+if __name__ == "__main__":
+  import os
+  import sys
+  sys.path.append( os.path.dirname( os.getcwd()) )
+
+try: 
+  from label_generation import VoxelMap
+  from label_generation import RayCaster
+  from label_generation import Visualizer3D
+except:
+  from . import VoxelMap
+  from . import RayCaster
+  from . import Visualizer3D
 
 import numpy as np
 import imageio
@@ -41,17 +51,18 @@ class LabelGenerator:
       
     return probs
     
+    
 if __name__ == "__main__":
   import argparse
   
   parser = argparse.ArgumentParser()
   # EXTERNAL DATA PATHS
   parser.add_argument("--scannet_scene_dir", type=str,
-                      default="/home/jonfrey/Datasets/scannet/scans/scene0003_00", help="")
+                      default="/home/jonfrey/Datasets/scannet/scans/scene0000_00", help="")
   parser.add_argument("--mesh_path", type=str,
-                      default="/home/jonfrey/Datasets/output_kimera_semantics/scene0003_00_labels_pcmr_confidence_05_fixed_epochs_predict_mesh.ply", help="")
+                      default="/home/jonfrey/Datasets/output_kimera_semantics/scene0000_00_pcmr_fixed_epochs_rerun_all_predict_mesh.ply", help="")
   parser.add_argument("--map_serialized_path", type=str,
-                      default="/home/jonfrey/Datasets/output_kimera_semantics/scene0003_00_labels_pcmr_confidence_05_fixed_epochs_serialized.data", help="")
+                      default="/home/jonfrey/Datasets/output_kimera_semantics/scene0000_00_pcmr_fixed_epochs_rerun_all_serialized.data", help="")
   
   args = parser.parse_args()
   

@@ -7,14 +7,14 @@
   <arg name="scannet_scene_base"     default="/home/jonfrey/Datasets/scannet/scans"/>
   <arg name="label_scene_base"     default="/home/jonfrey/Datasets/labels_generated"/>
 
-  <arg name="fps"                    default="5"/>
+  <arg name="fps"                    default="10"/>
   <arg name="frame_limit"            default="-1"/>
   <arg name="ratio_reprojected"      default="1.0"/>
   <arg name="mapping_scannet_path"   default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv"/>
   <arg name="scannet_labels"         default="False" />
   <arg name="output_dir"             default="/home/jonfrey/Datasets/output_kimera_semantics"/>
 
-  <arg name="voxel_size"             default="0.01"/>
+  <arg name="voxel_size"             default="0.03"/>
   <arg name="max_ray_length_m"       default="5"/>
 
   <!--  FRAMES  -->
@@ -27,11 +27,12 @@
   <arg name="image_topic"       default="rgb_img"/>
   <arg name="seg_topic"         default="semantic_img"/>
   <arg name="sync_topic"        default="sync_semantic"/>
-
-
+  <arg name="aux_labels"        default="invalid"/>
+  <arg name="prob_aux"        default="0"/>
+  <arg name="prob_main"        default="0"/>
 
   <arg name="semantic_label_2_color_csv_filename" default="nyu40_segmentation_mapping.csv"/>
-  <arg name="use_dynamic_masking" default="true"/>
+  <arg name="use_dynamic_masking"         default="true"/>
   <arg name="semantic_pointcloud"         default="/semantic_pointcloud"/>
 
   <arg name="use_freespace_pointcloud"    default="false" />
@@ -60,6 +61,11 @@
       
       
       <param name="probabilistic"           value="true"/>
+      <param name="aux_labels"              value="$(arg aux_labels)" />
+      
+      <param name="prob_main"           value="$(arg prob_main)" />
+      <param name="prob_aux"           value="$(arg prob_aux)" />
+
 
   </node>
 

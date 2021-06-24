@@ -81,8 +81,11 @@ class VoxelMap():
     self._u = u.reshape(-1)
     
   def ray_cast_results_to_probs(self, locations, index_ray):
-    self._probs.fill(0)
-    self._probs[:, :, 0] = 1
+    self._probs = np.zeros( self._probs.shape )
+    
+    if locations.shape[0] == 0:
+      return self._probs
+      
     idx_tmp = np.floor(((locations - self._mi + EPS) / self._voxel_size)).astype(np.uint32)
     
     for j in range(locations.shape[0]):
@@ -91,7 +94,15 @@ class VoxelMap():
 
     self._probs = self._probs - \
                                 (np.min( self._probs, axis=2)[...,None]).repeat(self._probs.shape[2],2)
-    self._probs = self._probs/ \
-                                (np.sum( self._probs, axis=2)[...,None]).repeat(self._probs.shape[2],2)
-
+    
+    m = (np.sum( self._probs, axis=2)[...,None]).repeat(self._probs.shape[2],2) > EPS
+    self._probs[m] = self._probs[m]/ \
+                                (np.sum( self._probs, axis=2)[...,None]).repeat(self._probs.shape[2],2)[m]
+    inv_m = m==False
+    
+    self._probs[inv_m] = 0
+    
+    inv_m[:,:,1:] = False
+    self._probs[inv_m] = 1
+    
     return self._probs

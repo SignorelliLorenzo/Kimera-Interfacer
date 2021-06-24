@@ -18,7 +18,11 @@ from time import sleep
 
 from label_loader import LabelLoaderAuto
 
-
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+import time
+import torch
+        
 def txt_to_camera_info(cam_p, img_p):
 
     data = np.loadtxt(cam_p)
@@ -36,12 +40,12 @@ def txt_to_camera_info(cam_p, img_p):
     return camera_info_msg
 
 
-def broadcast_camera_pose(H, frames, time):
+def broadcast_camera_pose(H, frames, stamp):
 
     br = tf2_ros.TransformBroadcaster()
     t = geometry_msgs.msg.TransformStamped()
 
-    t.header.stamp = time
+    t.header.stamp = stamp
     t.header.frame_id = frames[0]
     t.child_frame_id = frames[1]
     t.transform.translation.x = H[0, 3]
@@ -59,7 +63,12 @@ def dl_mock():
     rospack = rospkg.RosPack()
     kimera_interfacer_path = rospack.get_path('kimera_interfacer')
 
-    label_loader =LabelLoaderAuto(root_scannet= "/home/jonfrey/Datasets/scannet", confidence=0)
+    label_loader =LabelLoaderAuto(root_scannet= "/home/jonfrey/Datasets/scannet", 
+                                  confidence=rospy.get_param("~/dl_mock/prob_main") )
+    
+    label_loader_aux = LabelLoaderAuto(root_scannet= "/home/jonfrey/Datasets/scannet", 
+                                  confidence=rospy.get_param("~/dl_mock/prob_aux") )
+    
     
     depth_topic = rospy.get_param("~/dl_mock/depth_topic")
     image_topic = rospy.get_param("~/dl_mock/image_topic")
@@ -99,107 +108,170 @@ def dl_mock():
     per = 0 # percentage of used depth info
 
     frame_limit = rospy.get_param("~/dl_mock/frame_limit")
-    sub = 10
 
     if frame_limit == -1:
         frame_limit = float('inf')
     else:
-        frame_limit = int(frame_limit * sub)
+        frame_limit = int(frame_limit)
+    
+    from pathlib import Path
+    
+    label_paths = [str(s) for s in Path(label_scene_dir).rglob('*.png') if int(str(s).split('/')[-1][:-4]) % 10 == 0]
+     
+    label_paths.sort(key= lambda x: 1000000*int(str(x).split('/')[-3][5:9]) +
+        10000*int(str(x).split('/')[-3][-2:])+
+        int(x.split('/')[-1][:-4]))
+    
+    depth_paths = [ os.path.join( scannet_scene_dir, "depth", s.split('/')[-1] ) for s in label_paths]
+    image_paths = [ os.path.join( scannet_scene_dir, "color", s.split('/')[-1][:-4]+'.jpg' ) for s in label_paths]
+    
+    aux = [False for i in label_paths]
+    
+    aux_labels = [ rospy.get_param("~/dl_mock/aux_labels") ]
+    if len( aux_labels ) != 0 and os.path.isdir( aux_labels[0] ) :
+        new_paths = []
+        new_depths = []
+        new_image_paths = []
+        aux = []
+        for k,p in enumerate( label_paths ):
+            aux.append(False)
+            new_paths.append(p)
+            new_depths.append( depth_paths[k] )
+            new_image_paths.append( image_paths[k] )
+            for j in range(len(aux_labels) ):
+                aux.append(True)
+                new_depths.append( depth_paths[k] )
+                new_image_paths.append( image_paths[k] )
+                new_paths.append( os.path.join( aux_labels[j], p.split('/')[-1] ) )
+                
+        depth_paths = new_depths
+        label_paths = new_paths
+        image_paths = new_image_paths
+    
+    integrated = 0
 
-    while not rospy.is_shutdown():
-        n += sub
-        img_p = os.path.join( scannet_scene_dir, "color", str(n)+".jpg")
-        depth_p = os.path.join( scannet_scene_dir, "depth", str(n)+".png")
-        label_p = os.path.join( label_scene_dir, str(n)+".png")
-        if ( n > frame_limit or
-            not os.path.isfile( img_p ) or
-            not os.path.isfile( label_p )):
-            if n < frame_limit:
-                print("stopped at: ", img_p)
-                print("stopped at: ", label_p)
-            sleep(20)
-            n = 0
+    class Test(Dataset):
+        def __init__(self, aux, label_paths, depth_paths, image_paths):
+            self.aux, self.label_paths, self.depth_paths, self.image_paths = aux, label_paths, depth_paths, image_paths
+            self.length = len(self.aux)
+            for j, a in enumerate( zip( label_paths, depth_paths)):
+                l , d = a
+                if not os.path.isfile( d ) or not os.path.isfile( l ) :
+                    self.length = j 
+            self.map1, self.map2 = cv.initUndistortRectifyMap(
+                np.array( image_camera_info_msg.K).reshape( (3,3) ) ,
+                np.array([0,0,0,0]),
+                np.eye(3),
+                np.array( depth_camera_info_msg.K).reshape( (3,3) ),
+                (640,480),
+                cv.CV_32FC1)
+
+        def __getitem__(self, index):
+            aux_flag, label_p, depth_p, image_p = self.aux[index], self.label_paths[index], self.depth_paths[index], self.image_paths[index]
+            depth = imageio.imread( depth_p )
+            img = imageio.imread( image_p )
+            if aux_flag:
+                sem, _ = label_loader_aux.get( label_p )
+            else:
+                sem, _ = label_loader.get( label_p )
+            
+            sem_new = np.zeros( (sem.shape[0], sem.shape[1], 3) )
+            for i in range(0,41):
+                sem_new[sem == i, :3] = rgb[i]
+            sem_new = np.uint8( sem_new )
+
+            # publish camera pose
+            n = int(label_p.split('/')[-1][:-4])
+            H_cam = np.loadtxt(f"{scannet_scene_dir}pose/{n}.txt")
+            
+            H, W = depth.shape[0], depth.shape[1] # 640, 1280
+
+            # maps from image to depth
+            img = cv.remap( img,
+                self.map1,
+                self.map2,
+                interpolation=cv.INTER_NEAREST,
+                borderMode=cv.BORDER_CONSTANT,
+                borderValue=0)
+            
+            sem_new = cv.remap( sem_new,
+                            self.map1,
+                            self.map2,
+                            interpolation=cv.INTER_NEAREST,
+                            borderMode=cv.BORDER_CONSTANT,
+                            borderValue=0)
+            
+            return ( np.array( img ) , np.array( depth.astype(np.int32) ) , np.array( sem_new), H_cam )
+            
+            
+        def __len__(self):
+            
+            return self.length
+    
+    
+    data = Test(aux, label_paths, depth_paths, image_paths)
+    dataloader = torch.utils.data.DataLoader(data, num_workers= 8, shuffle=False )
+    
+    for j , batch in enumerate( dataloader ):
+        if j == len(dataloader)-1:
+            print("Break because of last frame !") 
             break
-
-        time = rospy.Time.now()
-        img = imageio.imread( img_p )
-        depth = imageio.imread( depth_p )
-        sem, _ = label_loader.get( label_p )
-
-        print(sem.shape)
-        depth[ np.random.rand( *depth.shape ) < per ] = 1
-
-        sem_new = np.zeros( (sem.shape[0], sem.shape[1], 3) )
-        for i in range(0,41):
-            sem_new[sem == i, :3] = rgb[i]
-        sem_new = np.uint8( sem_new )
-
-        # publish camera pose
-        H_cam = np.loadtxt(f"{scannet_scene_dir}pose/{n}.txt")
-        broadcast_camera_pose( H_cam, (world_frame, base_link_frame), time)
-
-        H, W = depth.shape[0], depth.shape[1] # 640, 1280
-
-        # maps from image to depth
-        map1, map2 = cv.initUndistortRectifyMap(
-            np.array( image_camera_info_msg.K).reshape( (3,3) ) ,
-            np.array([0,0,0,0]),
-            np.eye(3),
-            np.array( depth_camera_info_msg.K).reshape( (3,3) ),
-            (640,480),
-            cv.CV_32FC1)
-
-        img = cv.remap( img,
-             map1,
-             map2,
-             interpolation=cv.INTER_NEAREST,
-             borderMode=cv.BORDER_CONSTANT,
-             borderValue=0)
         
-        print("SEM NEW ", sem_new.shape, sem_new.max(), sem_new.min(), probabilistic)
-        sem_new = cv.remap( sem_new,
-                        map1,
-                        map2,
-                        interpolation=cv.INTER_NEAREST,
-                        borderMode=cv.BORDER_CONSTANT,
-                        borderValue=0)
-
-        mask = sem_new.sum(axis=2) == 1- rospy.get_param("~/dl_mock/ratio_reprojected")
-        depth[mask] = 0
-        img = bridge.cv2_to_imgmsg(img, encoding="rgb8")
-        depth = bridge.cv2_to_imgmsg(depth, encoding="16UC1")
+        if j > frame_limit:
+            print("Break because of frame limit !") 
+            break
+        
+        if rospy.is_shutdown():
+            print("Break because rospy shutdown !") 
+            break
+        
+        print(j, "/", len(dataloader))
+        img, depth, sem_new, H_cam = batch[0].numpy()[0],batch[1].numpy().astype(np.uint16)[0],batch[2].numpy()[0],batch[3].numpy()[0]
+        
+        t = rospy.Time.now()
+        
+        img = bridge.cv2_to_imgmsg( img, encoding="rgb8")
+        depth = bridge.cv2_to_imgmsg( depth, encoding="16UC1")
         sem_new = bridge.cv2_to_imgmsg(sem_new, encoding="rgb8" )
 
+        
+        
         img.header.frame_id = "base_link_gt"
         depth.header.frame_id = "base_link_gt"
         sem_new.header.frame_id = "base_link_gt"
 
-        img.header.seq = seq
-        depth.header.seq = seq
-        sem_new.header.seq= seq
+        img.header.seq = j
+        depth.header.seq = j
+        sem_new.header.seq= j
 
-        img.header.stamp = time
-        depth.header.stamp = time
-        sem_new.header.stamp = time
+        img.header.stamp = t
+        depth.header.stamp = t
+        sem_new.header.stamp = t
 
         msg = SyncSemantic()
         msg.depth = depth
         msg.image = img
         msg.sem = sem_new
+        
+        broadcast_camera_pose( H_cam, (world_frame, base_link_frame), t)
+        
         # publish current frame
         depth_pub.publish(depth)
         image_pub.publish(img)
         sem_pub.publish(sem_new)
-
         sync_pub.publish(msg)
 
         # publish static camera info
-        image_cam_pub.publish(image_camera_info_msg)
-        depth_cam_pub.publish(depth_camera_info_msg)
-
-        seq += 1
+        image_cam_pub.publish( image_camera_info_msg )
+        depth_cam_pub.publish( depth_camera_info_msg )
         rate.sleep()
 
+
+    print( "Start Sleeping for 50s \n"*5 )
+    time.sleep(50)
+    print( "Finished Sleeping for 50s \n"*5 )
+    
+    
 if __name__ == '__main__':
     try:
         dl_mock()

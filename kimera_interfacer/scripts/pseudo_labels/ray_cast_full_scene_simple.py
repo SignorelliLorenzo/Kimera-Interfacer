@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 from multiprocessing import Pool
 
-
 from label_generation import LabelGenerator
 import imageio
 
@@ -22,7 +21,7 @@ def label_to_png2(label,path):
     m = np.eye(max_classes)[idx] == 1
     values[i] = ( (label_c[m] *  max_val_10bit).reshape(H,W)).astype(np.int32)
     values[i][values[i] > max_val_10bit] = max_val_10bit
-    label_c[m] = 0
+    label_c[m] = -0.1
   
   values = values.astype( np.int32)
   idxs = idxs.astype( np.int32)
@@ -69,14 +68,17 @@ if __name__ == "__main__":
   nr = len(poses)
   
   max_cores = 10
-  with Pool(processes = max_cores) as pool:
-    alive_p = []
-    for j, p in enumerate( poses) :
-      H_cam = np.loadtxt(p)
-      probs = label_generator.get_label( H_cam )
-      p_out = os.path.join( out_dir, p.split('/')[-1][:-4] + '.png' )
-      
-      _res = pool.apply_async(func= label_to_png2, args=(probs[:,:,1:] , p_out) )
-      if j % max_cores == 0 and j != 0:
-        _res.get()
-      print(f"{j}/{nr}")
+  # with Pool(processes = max_cores) as pool:
+  alive_p = []
+  for j, p in enumerate( poses) :
+    H_cam = np.loadtxt(p)
+    probs = label_generator.get_label( H_cam )
+    p_out = os.path.join( out_dir, p.split('/')[-1][:-4] + '.png' )
+    label_to_png2( probs[:,:,1:] , p_out )
+    
+    # _res = pool.apply_async(func= label_to_png2, args=(probs[:,:,1:] , p_out) )
+    # if j % max_cores == 0 and j != 0:
+    #   _res.get()
+    print(f"{j}/{nr}")
+    
+    # _res.get()

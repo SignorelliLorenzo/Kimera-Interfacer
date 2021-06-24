@@ -80,13 +80,6 @@ int main(int argc, char** argv) {
   ros::Subscriber sync_sub = nh.subscribe<kimera_interfacer::SyncSemantic>( sync_topic, 10,
                                                                 boost::bind(&SyncSemanticCallback, _1,img_ptr, depth_ptr, seg_ptr) );
 
-//  ros::Subscriber depth_sub = nh.subscribe<sensor_msgs::Image>( depth_topic, 10,
-//                                                                boost::bind(&GenericCallback, _1, depth_ptr) );
-//  ros::Subscriber image_sub = nh.subscribe<sensor_msgs::Image>(image_topic, 10,
-//                                                                boost::bind(&GenericCallback, _1, img_ptr) );
-//  ros::Subscriber sem_sub = nh.subscribe<sensor_msgs::Image>(seg_topic, 10,
-//                                                                boost::bind(&GenericCallback, _1, seg_ptr) );
-
   std::string depth_cam_frame_id_;
   std::string base_link_frame_id_;
   std::string world_frame_id_;
@@ -123,7 +116,7 @@ int main(int argc, char** argv) {
 
     if (not res) {
       j++;
-      if (j > 500) {
+      if (j > 1000) {
         break;
       }
     }
