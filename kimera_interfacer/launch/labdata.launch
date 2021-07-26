@@ -1,27 +1,20 @@
 <?xml version="1.0" encoding="ISO-8859-15"?>
 <launch>
-  <arg name="scene"                     default="scene0000_00" />
-  <arg name="label_identifier"      default="pretrained24h_model" />
-  <arg name="label_identifier_out"      default="not_specified_output_identifier" />
-  <arg name="scannet_scene_dir"      default="/home/jonfrey/Datasets/scannet/scans/"/>
-
-  <arg name="scannet_scene_base"     default="/home/jonfrey/Datasets/scannet/scans"/>
-  <arg name="label_scene_base"     default="/home/jonfrey/Datasets/labels_generated"/>
-
+  <arg name="output_folder"           default="/home/jonfrey/Datasets/labdata/result" />
+  <arg name="idtf"                    default="idtf" />
   <arg name="fps"                    default="10"/>
   <arg name="frame_limit"            default="-1"/>
-  <arg name="sub_reprojected"      default="1"/>
+  <arg name="ratio_reprojected"      default="1.0"/>
   <arg name="mapping_scannet_path"   default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv"/>
   <arg name="scannet_labels"         default="False" />
-  <arg name="output_dir"             default="/home/jonfrey/Datasets/output_kimera_semantics"/>
 
-  <arg name="voxel_size"             default="0.02"/>
+  <arg name="voxel_size"             default="0.03"/>
   <arg name="max_ray_length_m"       default="5"/>
 
   <!--  FRAMES  -->
-  <arg name="sensor_frame"       default="base_link_gt"/>
-  <arg name="base_link_gt_frame" default="base_link_gt"/>
-  <arg name="base_link_frame"    default="base_link_gt"/>
+  <arg name="sensor_frame"       default="base_link_forward"/>
+  <arg name="base_link_gt_frame" default="base_link_forward"/>
+  <arg name="base_link_frame"    default="base_link_forward"/>
 
   <!--  TOPICS  -->
   <arg name="depth_topic"       default="depth_img"/>
@@ -38,35 +31,16 @@
 
   <arg name="use_freespace_pointcloud"    default="false" />
   <arg name="freespace_pointcloud"        default="/dev/null"/>
-
-  <node name="dl_mock" pkg="kimera_interfacer"
-        type="dl_mock.py" output="screen" required="true" >
-      <param name="base_link_gt_frame"        value="$(arg base_link_gt_frame)"/>
-      <param name="base_link_frame"           value="$(arg base_link_frame)"/>
-      <param name="world_frame"               value="world"/>
-      <param name="depth_topic" value="$(arg depth_topic)"/>
-      <param name="image_topic" value="$(arg image_topic)"/>
-      <param name="seg_topic"   value="$(arg seg_topic)"/>
-      <param name="sync_topic" value="$(arg sync_topic)"/>
-
-      <param name="scannet_scene_dir"       value="$(arg scannet_scene_base)/$(arg scene)/"/>
-
-      <param name="label_scene_dir"         value="$(arg label_scene_base)/$(arg label_identifier)/scans/$(arg scene)/$(arg label_identifier)/"/>
-      <param name="mapping_scannet_path"    value="$(arg mapping_scannet_path)"/>
-      <param name="scannet_labels"          value="$(arg scannet_labels)"/>
-      <param name="fps"                     value="$(arg fps)"/>
-      <param name="frame_limit"             value="$(arg frame_limit)"/>
-      <param name="sub_reprojected"       value="$(arg sub_reprojected)"/>
-      
-      <param name="new_format"              value="true"/>
-      
-      
-      <param name="probabilistic"           value="true"/>
-      <param name="aux_labels"              value="$(arg aux_labels)" />
-      
-      <param name="prob_main"           value="$(arg prob_main)" />
-      <param name="prob_aux"           value="$(arg prob_aux)" />
-  </node>
+  
+  <node pkg="tf2_ros"
+        type="static_transform_publisher"
+        name="base_link"
+        args="0 0 0 -0.5 0.5 -0.5 0.5 base_link base_link_forward" />
+  <!-- <node pkg="tf2_ros"
+      type="static_transform_publisher"
+      name="world_map"
+      args="0 0 0 0 0 0 1 world map" /> -->
+        <!-- x y z qx qy qz qw frame_id child_frame_id -->
 
   <node name="kimera_interfacer" pkg="kimera_interfacer"
       type="kimera_interfacer" output="screen" required="true" >
@@ -77,13 +51,10 @@
       Kimera Tsdf Node Parameters-->
       <param name="base_link_gt_frame"        value="$(arg base_link_gt_frame)"/>
       <param name="base_link_frame"           value="$(arg base_link_frame)"/>
-      <param name="world_frame"               value="world"/>
+      <param name="world_frame"               value="map"/>
       Input
       <remap from="pointcloud"                to="$(arg semantic_pointcloud)"/>
 
-      <param name="depth_topic" value="$(arg depth_topic)"/>
-      <param name="image_topic" value="$(arg image_topic)"/>
-      <param name="seg_topic"   value="$(arg seg_topic)"/>
       <param name="sync_topic" value="$(arg sync_topic)"/>
 
       Params
@@ -116,8 +87,8 @@
       <param name="semantic_label_2_color_csv_filepath"
              value="$(find kimera_interfacer)/cfg/$(arg semantic_label_2_color_csv_filename)"/>
 
-      <param name="mesh_filename"           value="$(arg output_dir)/$(arg scene)_$(arg label_identifier_out)_predict_mesh.ply" />
-      <param name="tsdf_filename"           value="$(arg output_dir)/$(arg scene)_$(arg label_identifier_out)_predict_tsdf_esdf_layers.vxblx" />
-      <param name="semantic_filename"       value="$(arg output_dir)/$(arg scene)_$(arg label_identifier_out)_serialized.data" />
+      <param name="mesh_filename"           value="$(arg output_folder)/$(arg idtf)_predict_mesh.ply" />
+      <param name="tsdf_filename"           value="$(arg output_folder)/$(arg idtf)_predict_tsdf_esdf_layers.vxblx" />
+      <param name="semantic_filename"       value="$(arg output_folder)/$(arg idtf)_serialized.data" />
   </node>
 </launch>

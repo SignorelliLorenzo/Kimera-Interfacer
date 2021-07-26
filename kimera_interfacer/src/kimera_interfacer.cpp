@@ -32,13 +32,13 @@
 namespace fs = std::filesystem;
 using namespace cv;
 
-void GenericCallback(const sensor_msgs::Image::ConstPtr& msg, sensor_msgs::Image::Ptr& buffer_pointer)
+void GenericCallback(const sensor_msgs::Image::ConstPtr &msg, sensor_msgs::Image::Ptr &buffer_pointer)
 {
   // performs a copy operation of the shared pointer to the buffer
   *buffer_pointer = *msg;
 }
 
-void SyncSemanticCallback(const kimera_interfacer::SyncSemantic::ConstPtr& msg, sensor_msgs::Image::Ptr& img, sensor_msgs::Image::Ptr& depth, sensor_msgs::Image::Ptr& seg)
+void SyncSemanticCallback(const kimera_interfacer::SyncSemantic::ConstPtr &msg, sensor_msgs::Image::Ptr &img, sensor_msgs::Image::Ptr &depth, sensor_msgs::Image::Ptr &seg)
 {
   // performs a copy operation of the shared pointer to the buffer
   *img = msg->image;
@@ -46,12 +46,13 @@ void SyncSemanticCallback(const kimera_interfacer::SyncSemantic::ConstPtr& msg, 
   *seg = msg->sem;
 }
 
-void UpdateCameraCallback(const sensor_msgs::CameraInfo::ConstPtr& msg, sensor_msgs::CameraInfo::Ptr& pointer)
+void UpdateCameraCallback(const sensor_msgs::CameraInfo::ConstPtr &msg, sensor_msgs::CameraInfo::Ptr &pointer)
 {
   *pointer = *msg;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
   ros::init(argc, argv, "kimera_interfacer");
   google::InitGoogleLogging(argv[0]);
   std::cout << "Started the Interfacer Node" << std::endl;
@@ -63,22 +64,14 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh;
   ros::NodeHandle nh_private("~");
 
-  sensor_msgs::Image::Ptr depth_ptr ( new sensor_msgs::Image );
-  sensor_msgs::Image::Ptr img_ptr ( new sensor_msgs::Image );
-  sensor_msgs::Image::Ptr seg_ptr ( new sensor_msgs::Image );
+  sensor_msgs::Image::Ptr depth_ptr(new sensor_msgs::Image);
+  sensor_msgs::Image::Ptr img_ptr(new sensor_msgs::Image);
+  sensor_msgs::Image::Ptr seg_ptr(new sensor_msgs::Image);
 
-  std::string depth_topic;
-  std::string image_topic;
-  std::string seg_topic;
   std::string sync_topic;
-
-  nh_private.getParam("depth_topic",depth_topic);
-  nh_private.getParam("image_topic",image_topic);
-  nh_private.getParam("seg_topic",seg_topic);
-
-  nh_private.getParam("sync_topic",sync_topic);
-  ros::Subscriber sync_sub = nh.subscribe<kimera_interfacer::SyncSemantic>( sync_topic, 10,
-                                                                boost::bind(&SyncSemanticCallback, _1,img_ptr, depth_ptr, seg_ptr) );
+  nh_private.getParam("sync_topic", sync_topic);
+  ros::Subscriber sync_sub = nh.subscribe<kimera_interfacer::SyncSemantic>(sync_topic, 10,
+                                                                           boost::bind(&SyncSemanticCallback, _1, img_ptr, depth_ptr, seg_ptr));
 
   std::string depth_cam_frame_id_;
   std::string base_link_frame_id_;
@@ -94,11 +87,11 @@ int main(int argc, char** argv) {
   kimera::PointCloudFromDepth pcl_from_depth;
 
   // future rework use camera infor manager instead and use service
-  sensor_msgs::CameraInfo::Ptr camera_ptr( new sensor_msgs::CameraInfo );
+  sensor_msgs::CameraInfo::Ptr camera_ptr(new sensor_msgs::CameraInfo);
   ros::Subscriber camera_sub = nh.subscribe<sensor_msgs::CameraInfo>(
       "depth_camera_info", 10,
       boost::bind(&UpdateCameraCallback,
-                  _1, camera_ptr)  );
+                  _1, camera_ptr));
 
   ros::Publisher pcl_pub;
   pcl_pub = nh.advertise<kimera::PointCloud>("pcl", 10, true);
@@ -111,31 +104,36 @@ int main(int argc, char** argv) {
   tf2_ros::TransformListener tfListener(tfBuffer);
   int j = 0;
   int last_frame_integrated = 0;
-  while (ros::ok()) {
+  while (ros::ok())
+  {
     bool res = depth_ptr->header.seq != last_frame_integrated;
 
-    if (not res) {
+    if (not res)
+    {
       j++;
-      if (j > 1000) {
+      if (j > 1000)
+      {
         break;
       }
     }
-    else {
+    else
+    {
       j = 0;
       //std::cout << "Received new data and alread process " << j << "Frames"<< std::endl;
       last_frame_integrated = depth_ptr->header.seq;
       pcl = pcl_from_depth.imageCb(depth_ptr, seg_ptr, camera_ptr);
       //std::cout << "PCL generated height:" << pcl->height << " Width:" << pcl->width << pcl->fields[0].count << " DATA 0" << pcl->data[0] << std::endl
       // Feed semantic pointcloud to KS.
-      try{
+      try
+      {
         voxblox::Transformation T_G_B;
         geometry_msgs::TransformStamped geo;
         geo = tfBuffer.lookupTransform(base_link_frame_id_,
                                        world_frame_id_,
                                        depth_ptr->header.stamp);
         tf::StampedTransform tf_transform;
-        tf::transformStampedMsgToTF(geo, tf_transform );
-        tf::transformTFToKindr( tf_transform , &T_G_B);
+        tf::transformStampedMsgToTF(geo, tf_transform);
+        tf::transformTFToKindr(tf_transform, &T_G_B);
 
         voxblox::Transformation T_B_C;
         T_B_C = T_G_B.inverse();
@@ -145,7 +143,8 @@ int main(int argc, char** argv) {
         // pcl->header.frame_id = world_frame_id_;
         pcl_pub.publish(pcl);
       }
-      catch (tf2::TransformException &ex) {
+      catch (tf2::TransformException &ex)
+      {
         LOG(ERROR) << "Some error when getting TF and insert new PCL message into tsdf_server";
       }
     }
@@ -157,7 +156,7 @@ int main(int argc, char** argv) {
   std::string semantic_filename;
   CHECK(nh_private.getParam("semantic_filename", semantic_filename));
   std::cout << "START GENERATING THE MESH" << std::endl;
-  tsdf_server->serializeVoxelLayer( semantic_filename );
+  tsdf_server->serializeVoxelLayer(semantic_filename);
   std::cout << "FINISHED GENERATING THE MESH" << std::endl;
 
   // Generates mesh and saves the ply file if mesh_filename ROS param is given
@@ -175,8 +174,9 @@ int main(int argc, char** argv) {
   esdf_server.disableIncrementalUpdate();
   if (kGenerateEsdf ||
       esdf_server.getEsdfMapPtr()
-          ->getEsdfLayerPtr()
-          ->getNumberOfAllocatedBlocks() == 0) {
+              ->getEsdfLayerPtr()
+              ->getNumberOfAllocatedBlocks() == 0)
+  {
     static constexpr bool kFullEuclideanDistance = true;
     esdf_server.updateEsdfBatch(kFullEuclideanDistance);
   }
