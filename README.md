@@ -77,7 +77,7 @@ label_generation:                             # Config used to generate network 
 
 Changing the ```generate_maps/certainty_thershold```:
 
-![](kimera_interfacer/docs/uncertainty-png)
+![](kimera_interfacer/docs/uncertainty.png)
 
 
 ### 4. Generating Pseudo Labels (Ray traying) 
