@@ -2,6 +2,15 @@ import yaml
 import os
 import time
 import argparse
+import notify2
+
+
+def sendmessage(title, message):
+  notify2.init("Test")
+  notice = notify2.Notification(title, message)
+  notice.show()
+  return
+
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
@@ -38,11 +47,15 @@ if __name__ == "__main__":
     par += f" {k}:={v}  "
 
   for j, s in enumerate(scenes):
-    aux_labels = "invalid"  # f"/home/jonfrey/Datasets/labels_generated/labels_deeplab/scans/{s}/labels_deeplab"  # "invalid"
+    aux_labels = "invalid"
     cmd = (
       f"roslaunch kimera_interfacer predict_generic_scene.launch scene:={s} aux_labels:={aux_labels}"
       + par
     )
+
     print(cmd)
     os.system(cmd)
-    time.sleep(20)
+
+    leng = len(scenes)
+    sendmessage("Finished Generate Map", f"{j}/{leng}: {s}")
+    time.sleep(10)

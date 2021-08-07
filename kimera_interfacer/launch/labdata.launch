@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="ISO-8859-15"?>
 <launch>
   <arg name="output_folder"           default="/home/jonfrey/Datasets/labdata/result" />
-  <arg name="idtf"                    default="idtf" />
+  <arg name="idtf"                    default="conference_room_fast" />
   <arg name="fps"                    default="10"/>
   <arg name="frame_limit"            default="-1"/>
   <arg name="ratio_reprojected"      default="1.0"/>
   <arg name="mapping_scannet_path"   default="/home/jonfrey/Datasets/scannet/scannetv2-labels.combined.tsv"/>
   <arg name="scannet_labels"         default="False" />
 
-  <arg name="voxel_size"             default="0.03"/>
+  <arg name="voxel_size"             default="0.05"/>
   <arg name="max_ray_length_m"       default="5"/>
 
   <!--  FRAMES  -->

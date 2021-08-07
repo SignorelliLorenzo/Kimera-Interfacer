@@ -20,6 +20,8 @@ if __name__ == "__main__":
 
   gm = exp.get("generate_maps", {})
   par = gm.get("parallel", False)
+  r_sub = gm.get("sub_reprojected", 1)
+
   label_identifier = exp["label_generation"]["identifier"]
   scenes = exp["label_generation"]["scenes"]
 
@@ -38,6 +40,7 @@ if __name__ == "__main__":
       "map_serialized_path": f"{output_dir}/{s}_{label_identifier}_serialized.data",
       "label_generate_idtf": label_generate_idtf,
       "label_generate_dir": "/home/jonfrey/Datasets/labels_generated",
+      "r_sub": r_sub,
     }
     args_str = ""
     for k, v in args.items():
