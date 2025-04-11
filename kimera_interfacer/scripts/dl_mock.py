@@ -3,13 +3,13 @@
 import rospy
 from sensor_msgs.msg import Image
 from kimera_interfacer.msg import SyncSemantic
-import cv_bridge
+from PILBridge import PILBridge
 import cv2 as cv
 import os
 
 import numpy as np
 from sensor_msgs.msg import CameraInfo
-import imageio
+import imageio.v2 as imageio
 import tf_conversions
 import tf2_ros
 import geometry_msgs.msg
@@ -22,7 +22,9 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import time
 import torch
-
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="numpy")
+warnings.filterwarnings("ignore")
 
 def txt_to_camera_info(cam_p, img_p):
 
@@ -63,14 +65,13 @@ def broadcast_camera_pose(H, frames, stamp):
 def dl_mock():
   rospack = rospkg.RosPack()
   kimera_interfacer_path = rospack.get_path("kimera_interfacer")
-
   label_loader = LabelLoaderAuto(
-    root_scannet="/home/jonfrey/Datasets/scannet",
+    root_scannet=rospy.get_param("~/dl_mock/root_scannet"),
     confidence=rospy.get_param("~/dl_mock/prob_main"),
   )
 
   label_loader_aux = LabelLoaderAuto(
-    root_scannet="/home/jonfrey/Datasets/scannet",
+    root_scannet=rospy.get_param("~/dl_mock/root_scannet"),
     confidence=rospy.get_param("~/dl_mock/prob_aux"),
   )
 
@@ -87,7 +88,18 @@ def dl_mock():
 
   scannet_scene_dir = rospy.get_param("~/dl_mock/scannet_scene_dir")
   label_scene_dir = rospy.get_param("~/dl_mock/label_scene_dir")
+  print("Launching dl_mock node...")
 
+  # Confirm parameters
+  print("DL_MOCK Params:")
+  print(f"Scene dir: {scannet_scene_dir}")
+  print(f"Label dir: {label_scene_dir}")
+  print(f"Image topic: {image_topic}")
+  print(f"Depth topic: {depth_topic}")
+  print(f"Seg topic: {seg_topic}")
+  print(f"Sync topic: {sync_topic}")
+  assert os.path.isdir(scannet_scene_dir), f"Scene directory not found: {scannet_scene_dir}"
+  assert os.path.isdir(label_scene_dir), f"Label directory not found: {label_scene_dir}"
   depth_pub = rospy.Publisher(depth_topic, Image, queue_size=1)
   image_pub = rospy.Publisher(image_topic, Image, queue_size=1)
   sem_pub = rospy.Publisher(seg_topic, Image, queue_size=1)
@@ -95,14 +107,14 @@ def dl_mock():
   image_cam_pub = rospy.Publisher("rgb_camera_info", CameraInfo, queue_size=1)
   depth_cam_pub = rospy.Publisher("depth_camera_info", CameraInfo, queue_size=1)
 
-  bridge = cv_bridge.CvBridge()
+  #bridge = cv_bridge.CvBridge()
 
   rospy.init_node("dl_mock", anonymous=True)
 
   rate = rospy.Rate(rospy.get_param("~/dl_mock/fps"))  # 1hz
   image_camera_info_msg = txt_to_camera_info(
     f"{scannet_scene_dir}/intrinsic/intrinsic_color.txt",
-    f"{scannet_scene_dir}color/0.jpg",
+    f"{scannet_scene_dir}/color/0.jpg",
   )
   depth_camera_info_msg = txt_to_camera_info(
     f"{scannet_scene_dir}/intrinsic/intrinsic_depth.txt",
@@ -193,18 +205,26 @@ def dl_mock():
       self.sub_reprojected = sub_reprojected
 
     def __getitem__(self, index):
+
       aux_flag, label_p, depth_p, image_p = (
         self.aux[index],
         self.label_paths[index],
         self.depth_paths[index],
         self.image_paths[index],
       )
+            
+      
+
+      assert os.path.isfile(depth_p), f"Missing depth file: {depth_p}"
+      assert os.path.isfile(image_p), f"Missing image file: {image_p}"
+      assert os.path.isfile(label_p), f"Missing label file: {label_p}"
       depth = imageio.imread(depth_p)
       mask = np.zeros_like(np.array(depth))
       mask[::sub_reprojected, ::sub_reprojected] = 1
       depth[mask != 1] = 0
-      print(mask.sum(), mask.size)
+      
       img = imageio.imread(image_p)
+      
       if aux_flag:
         sem, _ = label_loader_aux.get(label_p)
       else:
@@ -212,12 +232,12 @@ def dl_mock():
 
       sem_new = np.zeros((sem.shape[0], sem.shape[1], 3))
       for i in range(0, 41):
-        sem_new[sem == i, :3] = rgb[i]
+        sem_new[sem == i, :3] = np.copy(rgb[i])
       sem_new = np.uint8(sem_new)
 
       # publish camera pose
       n = int(label_p.split("/")[-1][:-4])
-      H_cam = np.loadtxt(f"{scannet_scene_dir}pose/{n}.txt")
+      H_cam = np.loadtxt(f"{scannet_scene_dir}/pose/{n}.txt")
 
       H, W = depth.shape[0], depth.shape[1]  # 640, 1280
 
@@ -249,9 +269,17 @@ def dl_mock():
   data = Test(
     aux, label_paths, depth_paths, image_paths, sub_reprojected=sub_reprojected
   )
-  dataloader = torch.utils.data.DataLoader(data, num_workers=8, shuffle=False)
-
+  dataloader = torch.utils.data.DataLoader(data, num_workers=8, shuffle=False, timeout=10)
+  iterator = iter(dataloader)
   for j, batch in enumerate(dataloader):
+    load_start = time.time()
+    try:
+        batch = next(iterator)
+    except StopIteration:
+        break
+    load_time = time.time() - load_start
+
+    process_start = time.time()
     if j == len(dataloader) - 1:
       print("Break because of last frame !")
       break
@@ -274,21 +302,14 @@ def dl_mock():
 
     t = rospy.Time.now()
 
-    img = bridge.cv2_to_imgmsg(img, encoding="rgb8")
-    depth = bridge.cv2_to_imgmsg(depth, encoding="16UC1")
-    sem_new = bridge.cv2_to_imgmsg(sem_new, encoding="rgb8")
+    img = PILBridge.numpy_to_rosimg(img, encoding="rgb8")
+    depth = PILBridge.numpy_to_rosimg(depth, encoding="16UC1")
+    sem_new = PILBridge.numpy_to_rosimg(sem_new, encoding="rgb8")
 
-    img.header.frame_id = "base_link_gt"
-    depth.header.frame_id = "base_link_gt"
-    sem_new.header.frame_id = "base_link_gt"
-
-    img.header.seq = j
-    depth.header.seq = j
-    sem_new.header.seq = j
-
-    img.header.stamp = t
-    depth.header.stamp = t
-    sem_new.header.stamp = t
+    for msg in (img, depth, sem_new):
+      msg.header.frame_id = "base_link_gt"
+      msg.header.seq = j
+      msg.header.stamp = t
 
     msg = SyncSemantic()
     msg.depth = depth
@@ -306,6 +327,13 @@ def dl_mock():
     # publish static camera info
     image_cam_pub.publish(image_camera_info_msg)
     depth_cam_pub.publish(depth_camera_info_msg)
+
+    process_time = time.time() - process_start
+    total_time = load_time + process_time
+
+    print(f"[{j}] Published frame at {t.to_sec():.2f}")
+    print(f"    Load Time:    {load_time:.3f}s")
+    print(f"    Process Time: {process_time:.3f}s")
     rate.sleep()
 
   print("Start Sleeping for 50s \n" * 5)

@@ -4,9 +4,10 @@
   <arg name="label_identifier"      default="pretrained24h_model" />
   <arg name="label_identifier_out"      default="not_specified_output_identifier" />
   <arg name="scannet_scene_dir"      default="/home/jonfrey/Datasets/scannet/scans/"/>
+  <arg name="root_scannet"      default="/home/jonfrey/Datasets/scannet/"/>
 
   <arg name="scannet_scene_base"     default="/home/jonfrey/Datasets/scannet/scans"/>
-  <arg name="label_scene_base"     default="/home/jonfrey/Datasets/labels_generated"/>
+  <arg name="label_scene_base"     default="labels_generated"/>
 
   <arg name="fps"                    default="10"/>
   <arg name="frame_limit"            default="-1"/>
@@ -50,7 +51,7 @@
 
       <param name="scannet_scene_dir"       value="$(arg scannet_scene_base)/$(arg scene)/"/>
 
-      <param name="label_scene_dir"         value="$(arg label_scene_base)/$(arg label_identifier)/scans/$(arg scene)/$(arg label_identifier)/"/>
+      <param name="label_scene_dir"         value="$(arg scannet_scene_dir)/$(arg scene)/$(arg label_scene_base)/"/>
       <param name="mapping_scannet_path"    value="$(arg mapping_scannet_path)"/>
       <param name="scannet_labels"          value="$(arg scannet_labels)"/>
       <param name="fps"                     value="$(arg fps)"/>
