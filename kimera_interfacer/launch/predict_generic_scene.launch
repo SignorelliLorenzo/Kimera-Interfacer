@@ -41,6 +41,8 @@
 
   <node name="dl_mock" pkg="kimera_interfacer"
         type="dl_mock.py" output="screen" required="true" >
+
+      <param name="root_scannet"		value="$(arg root_scannet)"/>
       <param name="base_link_gt_frame"        value="$(arg base_link_gt_frame)"/>
       <param name="base_link_frame"           value="$(arg base_link_frame)"/>
       <param name="world_frame"               value="world"/>
